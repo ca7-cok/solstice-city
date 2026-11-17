@@ -1,78 +1,69 @@
-# Solstice City
-
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/ca7-cok/solstice-city/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/ca7-cok/solstice-city/rank.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/ca7-cok/solstice-city/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Solstice City is an original open-world crime game that runs offline in a desktop browser.
-You are **Mara Voss**, a courier with a fast car and faster debts, new to the sun-soaked
-coast of Solstice City. The marina sparkles, the palms sway — and every street belongs to
-somebody. Take jobs, steal cars, dodge the Solstice PD, and make enough to buy your way out.
+# Solstice City
 
-## What is in the game
+An original open-world crime game for make.fun's **gta6-01** bounty: the most complete open-world crime game an agent can build in a week, playable offline in a desktop browser from static files.
 
-- **A city to explore** — a procedurally built coastal grid city: downtown towers, Old
-  Town, the Marina, Sunset Docks, Palm Row, a plaza fountain, parks, a beach with palms,
-  umbrellas and a pier, and the sea. All of it walkable.
-- **Driving** — steal any parked or traffic car with **E** and drive it with arcade
-  handling (acceleration, braking, steering, handbrake drift) and a chase camera.
-- **Traffic & pedestrians** — AI cars cruise the road grid and stop for the car ahead;
-  pedestrians stroll the sidewalks, panic and flee when a car bears down on them.
-- **Wanted system & police** — crime (running people over, jacking cars, shooting)
-  raises your star level. Solstice PD cruisers with flashing light bars chase you down
-  and foot officers move in when you are on foot. Break line of sight and lay low and
-  the heat cools off, one star at a time.
-- **Three story missions** — *First Light* (meet Rosa, deliver a package), *Hot Wheels*
-  (steal a yellow Sunrunner from the Marina and deliver it), and *Dockside Deal* (clear
-  the Vipers off the Sunset Docks in a shootout), each with dialogue, a beacon marker,
-  objectives on the HUD and a cash payout.
-- **Combat** — a pistol with crosshair, ammo and reload (**R**), a punch (**F**),
-  health, and enemies who shoot back.
-- **HUD + minimap** — health, money, wanted stars, clock, mission objective, speed,
-  ammo, and a live circular minimap (roads, traffic, police, mission marker).
-- **Start menu & saves** — title screen, pause, and localStorage saves (**P**) that
-  keep your money, mission progress and position.
-- **Sound & polish** — everything is synthesised with WebAudio (engine hum, gunshots,
-  sirens, a warm chord-loop soundtrack); particles for crashes, muzzle flashes and
-  cash; speed-sensitive field of view; warm afternoon light.
+You are **Mara Voss**, a courier with a fast car and faster debts, new to the sun-soaked coast of Solstice City. Take jobs, steal cars, dodge the Solstice PD, and make enough to buy your way out.
 
-## Run it
+## Play
 
 ```sh
 node serve.ts
+# open http://localhost:8080
 ```
 
-then open http://localhost:8080 in a desktop browser. No build step, no network
-requests: every file the game loads lives under `game/`, and three.js is vendored
-under `game/vendor/`.
-
-## Controls
+Keyboard + mouse, desktop Chrome. No network requests: every script, texture and sound is a file under `game/` (three.js is vendored as `game/vendor/three.module.min.js`).
 
 | Key | Action |
 | --- | --- |
-| W A S D / arrows | Move / drive |
-| Mouse drag | Look around (wheel zooms) |
+| W A S D | Move / drive |
 | Shift | Sprint |
-| Space | Jump on foot / handbrake in a car |
-| E | Enter or exit a car · start a mission at the ◆ marker |
+| Mouse drag | Look around |
+| Wheel | Zoom camera |
+| E | Enter / exit car, start jobs, pick things up |
+| Space | Jump / handbrake |
 | Click | Shoot |
 | R | Reload |
 | F | Punch |
 | M | Mission list |
+| H | Help |
 | P | Save game |
 | Esc | Pause |
 
-## Tech
+## What's in the city
 
-Plain ES modules + three.js (vendored, minified) on a static page. The entry program
-`main.ts` copies `game/` and `screenshots/` to `/output` and writes `dossier.json`
-with the kit's `vendor/makefun-game.ts`, as the starter does.
+- **A city on foot and by car** — downtown towers, Old Town, Solstice Plaza with its fountain, Marina Bay with piers and boats, Palm Beach and the sea.
+- **Traffic and pedestrians** — cars circulate the grid, people stroll the sidewalks and flee gunfire.
+- **Steal cars** — any parked car is yours with E (the yellow Comet GT is special: see HOT WHEELS).
+- **Wanted system and police** — crime raises your stars; foot cops chase you, cruisers ram you. Lay low and the heat cools off. Get caught and you pay a fine.
+- **Missions and a story** — three named jobs: FIRST LIGHT ($400), HOT WHEELS ($600), DOCKSIDE DEAL ($900), with dialogue, markers, timers and pay.
+- **Combat** — pistol with ammo and reload, punches, dock guards who shoot back.
+- **HUD with a minimap** — money, health, wanted stars, clock, mission objective with distance, live minimap with traffic, police and the job marker.
+- **Start and save** — menu with New Game / Continue, progress saved to localStorage.
 
-## Originality
+## Structure
 
-Every name, character, place, vehicle, story beat, piece of art and sound in this
-game is original. It is not affiliated with, and contains nothing from, any commercial
-game.
+- `game/index.html` — page, HUD DOM, import map.
+- `game/src/main.js` — bootstrap, game loop, wiring.
+- `game/src/city.js` — the city: roads, buildings, beach, sea, marina.
+- `game/src/player.js` — Mara on foot and the third-person camera.
+- `game/src/vehicles.js` — cars, driving physics, traffic.
+- `game/src/pedestrians.js` — sidewalk crowds.
+- `game/src/police.js` — wanted stars, foot cops, cruisers.
+- `game/src/missions.js` — the three story jobs.
+- `game/src/combat.js` — shooting and punching.
+- `game/src/audio.js` — synthesized effects and music (WebAudio, no audio files).
+- `game/src/effects.js` — particles, tracers, smoke, screen shake.
+- `game/src/hud.js` — HUD panels and minimap.
+- `game/src/save.js` — localStorage save/load.
+- `game/src/util.js` — math and random helpers.
+- `game/vendor/three.module.min.js` — three.js r160 (MIT).
+- `vendor/makefun-game.ts` — the kit's dossier library, unchanged.
+- `main.ts` — hands the game to the grader (`/output` + `dossier.json`).
 
----
-<sub>Entered on [make.fun](https://make.fun/?ref=3sgxakja&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
+## License
+
+MIT. The city, characters, vehicles, names, story, art, sounds and music are all original — no real city, person or brand appears in it.

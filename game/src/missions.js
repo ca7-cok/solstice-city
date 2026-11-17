@@ -1,203 +1,222 @@
-// Missions & story: three named jobs for Mara Voss, each with stages,
-// a glowing beacon marker, dialogue and a cash payout. All original.
+// Story missions: three named jobs with dialogue, markers, timers and pay.
+// A mission is a list of steps; each step is goto / interact / steal /
+// eliminate / deliver. The HUD reads currentObjective() for its panel.
 import * as THREE from 'three';
-import { PLACES } from './city.js';
-import { GangMember } from './combat.js';
-import { Car } from './vehicles.js';
+import { dist2, fmtTime } from './util.js';
 
-const MISSIONS = [
+export const MISSIONS = [
   {
-    id: 'first-light', title: 'FIRST LIGHT', giver: 'Rosa',
-    brief: 'A courier job to get you started. Rosa is waiting at her café.',
-    stages: [
-      { text: 'Meet Rosa at Rosa\'s Café', target: PLACES.rosaCafe, radius: 6, kind: 'goto' },
-      { text: 'Deliver the package to Palm Garage', target: PLACES.palmGarage, radius: 7, kind: 'goto', needsCar: true },
+    id: 'first-light',
+    name: 'FIRST LIGHT',
+    pay: 400,
+    blurb: 'A sunrise drop for an old friend. No questions, no shortcuts.',
+    steps: [
+      { type: 'interact', at: 'plaza', text: 'Meet Sol at the plaza fountain', radius: 4 },
+      { type: 'goto', at: 'marina', text: 'Drive the package to Marina Bay', radius: 6 },
+      { type: 'interact', at: 'marina', text: 'Hand the package to the courier', radius: 4 },
     ],
-    reward: 400,
-    outro: 'Rosa: "Clean run, Mara. The city pays couriers who don\'t ask questions."',
   },
   {
-    id: 'hot-wheels', title: 'HOT WHEELS', giver: 'Rosa',
-    brief: 'A client wants a yellow Sunrunner from the Marina — no questions, no receipts.',
-    stages: [
-      { text: 'Steal the yellow Sunrunner at the Marina', target: PLACES.marina, radius: 8, kind: 'steal' },
-      { text: 'Deliver the Sunrunner to Palm Garage', target: PLACES.palmGarage, radius: 8, kind: 'deliver', needsCar: true },
+    id: 'hot-wheels',
+    name: 'HOT WHEELS',
+    pay: 600,
+    blurb: 'A yellow Comet GT is parked on 6th. Bring it to the chop shop — fast.',
+    steps: [
+      { type: 'steal', at: 'hotwheelsCar', text: 'Steal the yellow Comet GT (E)', radius: 6 },
+      { type: 'drive', at: 'chopshop', text: 'Deliver it to the chop shop in Southside', radius: 7, timeLimit: 90 },
     ],
-    reward: 600,
-    outro: 'Rosa: "The client is happy. The PD is not. Same time tomorrow?"',
   },
   {
-    id: 'dockside-deal', title: 'DOCKSIDE DEAL', giver: 'Rosa',
-    brief: 'The Vipers are muscling in on the docks. Go remind them whose city this is.',
-    stages: [
-      { text: 'Head to the Sunset Docks', target: PLACES.docks, radius: 8, kind: 'goto' },
-      { text: 'Deal with the Vipers (0/4)', target: PLACES.docks, radius: 30, kind: 'fight' },
-      { text: 'Report back to Rosa at her café', target: PLACES.rosaCafe, radius: 6, kind: 'goto' },
+    id: 'dockside-deal',
+    name: 'DOCKSIDE DEAL',
+    pay: 900,
+    blurb: 'The Harbor crew is moving crates tonight. Take the crate, leave no witnesses.',
+    steps: [
+      { type: 'goto', at: 'docks', text: 'Reach the Harbor Docks', radius: 8 },
+      { type: 'eliminate', at: 'docks', text: 'Deal with the dock guards (0/3)', radius: 26, count: 3 },
+      { type: 'interact', at: 'docks', text: 'Grab the crate (E)', radius: 4 },
+      { type: 'goto', at: 'plaza', text: 'Bring the crate back to the plaza', radius: 6 },
     ],
-    reward: 900,
-    outro: 'Rosa: "The docks are ours again. Solstice City is starting to feel like home, huh?"',
   },
 ];
 
+function makeBeacon(color) {
+  const g = new THREE.Group();
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.6, 42, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  pillar.position.y = 21;
+  const diamond = new THREE.Mesh(
+    new THREE.OctahedronGeometry(1.1),
+    new THREE.MeshBasicMaterial({ color }),
+  );
+  diamond.position.y = 7;
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(2.2, 3, 24),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.15;
+  g.add(pillar, diamond, ring);
+  g.userData.diamond = diamond;
+  g.userData.ring = ring;
+  return g;
+}
+
 export class MissionManager {
-  constructor(game) {
-    this.game = game;
-    this.defs = MISSIONS;
-    this.activeIndex = -1;     // index into defs, -1 = free roam
-    this.stage = 0;
-    this.gang = [];
-    this.beacon = null;
-    this.beaconLight = null;
-    this.stealCar = null;
-    this.fightRemaining = 0;
-    this.talkT = 0;
-    this.buildBeacon();
-  }
-
-  buildBeacon() {
-    const geo = new THREE.CylinderGeometry(1.6, 1.6, 60, 12, 1, true);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xff9f1c, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false,
-    });
-    this.beacon = new THREE.Mesh(geo, mat);
+  constructor(scene, markers) {
+    this.scene = scene;
+    this.markers = markers;
+    this.active = null; // {def, stepIdx, stepStart, kills, timeLeft}
+    this.done = new Set();
+    this.beacon = makeBeacon(0xffb020);
     this.beacon.visible = false;
-    this.game.ctx.scene.add(this.beacon);
-    this.beaconLight = new THREE.Mesh(
-      new THREE.SphereGeometry(1.4, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0xffd166 }),
-    );
-    this.beaconLight.visible = false;
-    this.game.ctx.scene.add(this.beaconLight);
+    scene.add(this.beacon);
+    this.dialogue = '';
+    this.dialogueUntil = 0;
   }
 
-  get active() { return this.activeIndex >= 0 ? this.defs[this.activeIndex] : null; }
-  get stageDef() { const a = this.active; return a ? a.stages[this.stage] : null; }
-
-  get available() {
-    return this.defs.filter((d, i) => !this.game.missionsDone.includes(d.id) && i !== this.activeIndex);
+  available() {
+    return MISSIONS.filter((m) => !this.done.has(m.id) && (!this.active || this.active.def.id !== m.id));
   }
 
-  start(index) {
-    this.activeIndex = index;
-    this.stage = 0;
-    this.game.audio.missionDone();
-    const m = this.active;
-    this.game.hud.toast(`MISSION: ${m.title}`, m.brief);
-    this.game.hud.say(m.giver, this.stageText());
-    if (this.stageDef.kind === 'steal') this.spawnStealCar();
-    this.placeBeacon();
+  start(id, now) {
+    const def = MISSIONS.find((m) => m.id === id);
+    if (!def || this.done.has(id) || this.active) return false;
+    this.active = { def, stepIdx: 0, stepStart: now, kills: 0, timeLeft: 0 };
+    this.say(def.name + ' — ' + def.blurb, now, 6);
+    this.updateBeacon();
+    return true;
   }
 
-  stageText() {
-    const s = this.stageDef;
-    if (!s) return '';
-    if (s.kind === 'fight') return `Deal with the Vipers (${4 - this.fightRemaining}/4)`;
-    return s.text;
+  say(text, now, dur = 4) {
+    this.dialogue = text;
+    this.dialogueUntil = now + dur;
   }
 
-  placeBeacon() {
-    const s = this.stageDef;
-    if (!s) { this.beacon.visible = false; this.beaconLight.visible = false; return; }
-    const t = s.kind === 'steal' && this.stealCar ? this.stealCar.pos : s.target;
-    this.beacon.position.set(t.x, 30, t.z);
-    this.beaconLight.position.set(t.x, 1.2, t.z);
-    this.beacon.visible = true; this.beaconLight.visible = true;
+  currentStep() {
+    return this.active ? this.active.def.steps[this.active.stepIdx] : null;
   }
 
-  // Called when the player presses E near the mission start marker.
-  tryStartNearPlayer() {
-    if (this.active) return false;
-    const p = this.game.ctx.player.pos;
-    const next = this.defs.find((d) => !this.game.missionsDone.includes(d.id));
-    if (!next) return false;
-    const start = next.stages[0].target;
-    if (Math.hypot(p.x - start.x, p.z - start.z) < 10) {
-      this.start(this.defs.indexOf(next));
-      return true;
+  currentObjective() {
+    if (!this.active) {
+      const next = this.available()[0];
+      return next
+        ? { title: 'FREE ROAM', text: 'Next job: ' + next.name + ' — go to the ◆ marker and press E. Steal a car with E near one.' }
+        : { title: 'FREE ROAM', text: 'All jobs done. The city is yours — keep the money coming.' };
     }
-    return false;
-  }
-
-  spawnGang() {
-    const docks = PLACES.docks;
-    const names = ['Viper', 'Viper', 'Viper', 'Viper'];
-    for (let i = 0; i < 4; i++) {
-      const g = new GangMember(this.game.ctx.scene,
-        docks.x + (i % 2 === 0 ? -14 : 14) + (i > 1 ? 8 : -8),
-        docks.z + (i < 2 ? -10 : 12), names[i]);
-      this.gang.push(g);
+    const step = this.currentStep();
+    let text = step.text;
+    if (step.type === 'eliminate') text = 'Deal with the dock guards (' + this.active.kills + '/' + step.count + ')';
+    if (step.timeLimit) {
+      const left = Math.max(0, step.timeLimit - (this.active.elapsed || 0));
+      text += ' — ' + fmtTime(left) + ' left';
     }
-    this.fightRemaining = 4;
+    return { title: this.active.def.name, text };
   }
 
-  onGangKilled() {
-    this.fightRemaining = Math.max(0, this.fightRemaining - 1);
-    if (this.active && this.stageDef && this.stageDef.kind === 'fight' && this.fightRemaining === 0) {
-      this.advance();
+  markerPos(step) {
+    return this.markers[step.at];
+  }
+
+  updateBeacon() {
+    const step = this.currentStep();
+    if (!step) { this.beacon.visible = false; return; }
+    const p = this.markerPos(step);
+    this.beacon.position.set(p.x, 0, p.z);
+    this.beacon.visible = true;
+  }
+
+  // Called every frame; returns an event object when something notable happens.
+  update(dt, now, ctx) {
+    if (this.active) {
+      const step = this.currentStep();
+      if (step.timeLimit) {
+        this.active.elapsed = (this.active.elapsed || 0) + dt;
+        if (this.active.elapsed > step.timeLimit) {
+          const failed = this.active.def;
+          this.active = null;
+          this.updateBeacon();
+          this.say(failed.name + ' failed — the window closed.', now, 5);
+          return { type: 'failed', mission: failed };
+        }
+      }
     }
-  }
-
-  advance() {
-    const m = this.active;
-    this.stage++;
-    if (this.stage >= m.stages.length) { this.complete(); return; }
-    const s = this.stageDef;
-    if (s.kind === 'fight') this.spawnGang();
-    if (s.kind === 'steal') this.spawnStealCar();
-    this.game.hud.say(m.giver, this.stageText());
-    this.placeBeacon();
-  }
-
-  spawnStealCar() {
-    const marina = PLACES.marina;
-    this.stealCar = new Car(this.game.ctx.scene, {
-      color: 0xf2c14e, x: marina.x + 6, z: marina.z + 4, heading: Math.PI / 2, parked: true,
-    });
-    this.game.ctx.cars.push(this.stealCar);
-    this.placeBeacon();
-  }
-
-  complete() {
-    const m = this.active;
-    this.game.money += m.reward;
-    this.game.missionsDone.push(m.id);
-    this.game.audio.missionDone();
-    this.game.hud.toast(`MISSION COMPLETE: ${m.title}`, `+$${m.reward} — ${m.outro}`);
-    this.game.ctx.effects.cashBurst(this.game.ctx.player.pos.x, 2, this.game.ctx.player.pos.z);
-    this.activeIndex = -1;
-    this.stage = 0;
-    this.beacon.visible = false; this.beaconLight.visible = false;
-    this.game.saveGame();
-  }
-
-  update(dt) {
-    const ctx = this.game.ctx;
     if (this.beacon.visible) {
-      this.beacon.rotation.y += dt * 0.8;
-      this.beaconLight.position.y = 1.2 + Math.sin(ctx.time * 3) * 0.25;
+      this.beacon.userData.diamond.rotation.y += dt * 1.5;
+      this.beacon.userData.diamond.position.y = 7 + Math.sin(now * 2) * 0.5;
+      this.beacon.userData.ring.scale.setScalar(1 + Math.sin(now * 3) * 0.08);
     }
-    if (!this.active) return;
-    const s = this.stageDef;
-    const p = ctx.player.inCar ? ctx.player.inCar.pos : ctx.player.pos;
-    const inCar = ctx.player.inCar;
-    const targetPos = s.kind === 'steal' && this.stealCar ? this.stealCar.pos : s.target;
-    const d = Math.hypot(p.x - targetPos.x, p.z - targetPos.z);
-    if (s.kind === 'goto' && d < s.radius) {
-      if (s.needsCar && !inCar) {
-        this.game.hud.say('Rosa', 'You need wheels for this one — bring a car.');
-        return;
+    return null;
+  }
+
+  // Player pressed E: try to advance an interact/steal step, or start a job.
+  interact(now, ctx) {
+    if (this.active) {
+      const step = this.currentStep();
+      const p = this.markerPos(step);
+      const d = dist2(ctx.player.x, ctx.player.z, p.x, p.z);
+      if (d > step.radius + 2) return { type: 'none' };
+      if (step.type === 'interact') {
+        if (step.at === 'plaza' && this.active.def.id === 'first-light' && this.active.stepIdx === 0) {
+          this.say('Sol: "Package is light, money is heavy. Marina Bay, pier two. Don\'t open it."', now, 6);
+        }
+        return this.advance(now, ctx);
       }
-      this.advance();
-    } else if (s.kind === 'deliver' && inCar && d < s.radius) {
-      this.advance();
-    } else if (s.kind === 'steal') {
-      if (inCar === this.stealCar) {
-        this.game.wanted.addCrime(1, 'Grand theft auto — the Marina owner called it in.');
-        this.advance();
-      }
+      if (step.type === 'steal') return { type: 'none' }; // handled by car logic
+      return { type: 'none' };
     }
-    // Gang members act.
-    for (const g of this.gang) g.update(dt, ctx);
-    this.gang = this.gang.filter((g) => g.alive || g.health > -100);
+    // No active job: starting one needs the player at the plaza marker.
+    const next = this.available()[0];
+    if (!next) return { type: 'none' };
+    const p = this.markers.plaza;
+    if (dist2(ctx.player.x, ctx.player.z, p.x, p.z) > 7) return { type: 'none' };
+    this.start(next.id, now);
+    // The first step is meeting Sol at this same fountain: one press starts
+    // the job and shakes his hand.
+    const again = this.interact(now, ctx);
+    return again.type === 'advanced' ? { type: 'started', mission: next } : { type: 'started', mission: next };
+  }
+
+  // Step completed by movement / kills / delivery.
+  advance(now, ctx) {
+    if (!this.active) return { type: 'none' };
+    const def = this.active.def;
+    this.active.stepIdx++;
+    if (this.active.stepIdx >= def.steps.length) {
+      this.done.add(def.id);
+      this.active = null;
+      this.updateBeacon();
+      return { type: 'completed', mission: def };
+    }
+    this.active.elapsed = 0;
+    this.active.stepStart = now;
+    this.updateBeacon();
+    const step = this.currentStep();
+    this.say(def.name + ': ' + step.text, now, 5);
+    return { type: 'advanced', mission: def, step };
+  }
+
+  // Called when the player reaches a goto/drive marker, steals the target car,
+  // or scores a kill during an eliminate step.
+  checkProgress(now, ctx) {
+    if (!this.active) return null;
+    const step = this.currentStep();
+    const p = this.markerPos(step);
+    const d = dist2(ctx.player.x, ctx.player.z, p.x, p.z);
+    if ((step.type === 'goto' || step.type === 'drive') && d < step.radius) {
+      return this.advance(now, ctx);
+    }
+    return null;
+  }
+
+  onKill(now) {
+    if (!this.active) return null;
+    const step = this.currentStep();
+    if (step.type !== 'eliminate') return null;
+    this.active.kills++;
+    if (this.active.kills >= step.count) return this.advance(now, {});
+    return { type: 'kill', kills: this.active.kills, needed: step.count };
   }
 }

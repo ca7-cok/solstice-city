@@ -1,31 +1,27 @@
-// Solstice City save / load (localStorage, no network).
-const KEY = 'solstice-city-save-v1';
+// Save / load through localStorage. One key, one JSON blob.
+export const SAVE_KEY = 'solstice-city-save-v1';
 
-export function loadSave() {
+export function saveGame(state) {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (!s || typeof s !== 'object') return null;
-    return s;
-  } catch { return null; }
-}
-
-export function writeSave(state) {
-  try {
-    const data = {
-      money: Math.round(state.money),
-      missionsDone: state.missionsDone.slice(),
-      activeMission: state.activeMission,
-      player: { x: state.playerPos.x, z: state.playerPos.z },
-      health: state.health,
-      savedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
     return true;
-  } catch { return false; }
+  } catch (e) {
+    return false;
+  }
 }
 
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+export function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (typeof data !== 'object' || data === null) return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function hasSave() {
+  return loadGame() !== null;
 }

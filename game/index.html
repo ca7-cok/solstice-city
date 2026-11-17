@@ -4,145 +4,149 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solstice City — an open-world crime game</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23ff8a3d'/%3E%3Ccircle cx='16' cy='13' r='6' fill='%23ffd34d'/%3E%3Crect x='4' y='20' width='24' height='3' fill='%232e7fc2'/%3E%3C/svg%3E">
 <style>
-  html, body { margin: 0; padding: 0; overflow: hidden; background: #0b1622; height: 100%;
-    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #fff;
-    -webkit-user-select: none; user-select: none; }
-  #app { position: fixed; inset: 0; }
-  canvas.game { display: block; }
-  .hud { position: absolute; pointer-events: none; z-index: 5; }
-  #hud-top-left { top: 14px; left: 16px; }
-  #money { font-size: 26px; font-weight: 800; color: #7dff9b; text-shadow: 0 2px 4px rgba(0,0,0,.7); letter-spacing: 1px; }
-  #health-wrap { margin-top: 6px; width: 210px; height: 12px; background: rgba(0,0,0,.55);
-    border: 1px solid rgba(255,255,255,.35); border-radius: 6px; overflow: hidden; }
-  #health-bar { height: 100%; width: 100%; background: linear-gradient(90deg,#37d67a,#a5f2b0); transition: width .2s; }
-  #armor-line { margin-top: 4px; font-size: 12px; color: #cfe8ff; text-shadow: 0 1px 2px #000; }
-  #hud-top-right { top: 14px; right: 16px; text-align: right; }
-  #wanted { font-size: 30px; letter-spacing: 4px; color: #ffd23e; text-shadow: 0 0 10px rgba(255,180,0,.8), 0 2px 3px #000; }
-  #wanted .off { color: rgba(255,255,255,.25); text-shadow: 0 1px 2px #000; }
-  #clock { margin-top: 2px; font-size: 15px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000; }
-  #hud-bottom-left { left: 16px; bottom: 16px; max-width: 380px; }
-  #objective { background: rgba(8,18,32,.72); border-left: 4px solid #ff9f1c; border-radius: 4px;
-    padding: 10px 12px; font-size: 15px; line-height: 1.45; }
-  #objective .m-title { color: #ffb703; font-weight: 800; letter-spacing: .5px; }
-  #objective .m-sub { color: #e8f1ff; }
-  #dialogue { margin-top: 10px; background: rgba(8,18,32,.72); border-radius: 4px; padding: 10px 12px;
-    font-size: 15px; line-height: 1.5; display: none; }
-  #dialogue .who { color: #8ecae6; font-weight: 800; }
-  #hud-bottom-right { right: 16px; bottom: 16px; text-align: right; }
-  #minimap { border-radius: 50%; border: 3px solid rgba(255,255,255,.55);
-    box-shadow: 0 0 0 3px rgba(0,0,0,.45), 0 4px 14px rgba(0,0,0,.5); background: #0e2233; }
-  #speedo { margin-top: 6px; font-size: 22px; font-weight: 800; text-shadow: 0 2px 4px #000; }
-  #speedo small { font-size: 12px; color: #cfe8ff; font-weight: 600; }
-  #ammo { margin-top: 2px; font-size: 15px; font-weight: 700; color: #ffe8a3; text-shadow: 0 1px 3px #000; }
-  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px;
-    z-index: 6; pointer-events: none; display: none; }
-  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,.9);
-    box-shadow: 0 0 3px #000; }
-  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
-  #crosshair::after { left: 0; top: 10px; width: 22px; height: 2px; }
-  #toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 7;
-    font-size: 26px; font-weight: 800; letter-spacing: 1px; color: #fff; text-shadow: 0 2px 8px #000;
-    opacity: 0; transition: opacity .3s; pointer-events: none; text-align: center; }
-  #toast small { display: block; font-size: 15px; font-weight: 600; color: #ffe8a3; margin-top: 4px; }
-  #hint { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); z-index: 5;
-    font-size: 13px; color: #dfeeff; background: rgba(0,0,0,.45); padding: 6px 12px; border-radius: 20px;
-    pointer-events: none; white-space: nowrap; }
-  .overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(160deg, rgba(6,20,38,.82), rgba(30,10,40,.78)); backdrop-filter: blur(2px); }
-  .panel { text-align: center; max-width: 640px; padding: 20px; }
-  .panel h1 { font-size: 64px; margin: 0 0 4px; letter-spacing: 3px; font-weight: 900;
-    background: linear-gradient(90deg,#ffd166,#ff7b54,#ff5d8f); -webkit-background-clip: text; background-clip: text;
-    -webkit-text-fill-color: transparent; text-shadow: 0 4px 24px rgba(255,120,60,.25); }
-  .panel h2 { margin: 0 0 18px; font-size: 17px; font-weight: 600; color: #ffe8a3; letter-spacing: 2px; }
-  .panel p { color: #d7e6f5; font-size: 15px; line-height: 1.65; }
-  .btn { pointer-events: auto; cursor: pointer; display: inline-block; margin: 8px 6px 0; padding: 13px 34px;
-    font-size: 17px; font-weight: 800; letter-spacing: 1px; color: #1a1206; background: linear-gradient(180deg,#ffd166,#ff9f1c);
-    border: none; border-radius: 8px; box-shadow: 0 4px 16px rgba(255,159,28,.45); }
-  .btn:hover { filter: brightness(1.08); }
-  .btn.ghost { background: rgba(255,255,255,.12); color: #fff; box-shadow: none; border: 1px solid rgba(255,255,255,.4); }
-  .controls { margin: 18px auto 4px; display: inline-block; text-align: left; font-size: 13.5px; color: #bcd3e8;
-    line-height: 1.9; column-count: 2; column-gap: 44px; }
-  .controls b { color: #fff; background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 7px; font-weight: 700; }
-  #loading { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-    background: #0b1622; color: #9fc3e8; font-size: 16px; letter-spacing: 1px; }
-  #wasted { display: none; }
-  #wasted h1 { font-size: 84px; color: #ff4d4d; background: none; -webkit-text-fill-color: #ff4d4d; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0e13; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   .hidden { display: none !important; }
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel { position: absolute; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  #money-box { top: 14px; left: 16px; }
+  #money { font-size: 30px; font-weight: 800; color: #58d68d; }
+  #health-bar { width: 210px; height: 10px; background: rgba(0,0,0,.55); border-radius: 5px; margin-top: 4px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #58d68d; border-radius: 5px; transition: width .2s; }
+  #health-num { font-size: 12px; color: #fff; font-weight: 700; margin-top: 2px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+  #district { font-size: 13px; letter-spacing: 1px; color: #e8ecf1; margin-top: 6px; }
+  #status-box { top: 14px; right: 16px; text-align: right; }
+  #stars { font-size: 24px; letter-spacing: 3px; }
+  #clock { font-size: 15px; color: #e8ecf1; margin-top: 2px; }
+  #mission-box { left: 16px; bottom: 16px; max-width: 420px; background: rgba(10,14,20,.72); border-left: 4px solid #ffb020; border-radius: 4px; padding: 10px 14px; }
+  #mission-title { font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #ffb020; }
+  #mission-text { font-size: 14px; color: #eef2f6; margin-top: 3px; line-height: 1.35; }
+  #objective-distance { font-size: 12px; color: #ffd34d; margin-top: 3px; }
+  #minimap-wrap { position: absolute; right: 16px; bottom: 16px; text-align: right; }
+  #minimap { width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255,255,255,.75); box-shadow: 0 0 0 3px rgba(0,0,0,.5); background: #274e63; }
+  #speed { font-size: 24px; font-weight: 800; margin-top: 4px; }
+  #ammo { font-size: 15px; color: #ffd34d; }
+  #hint { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.6); padding: 7px 16px; border-radius: 20px; font-size: 13px; white-space: nowrap; }
+  #toast { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); background: rgba(10,14,20,.8); border: 1px solid rgba(255,255,255,.25); padding: 9px 18px; border-radius: 6px; font-size: 15px; opacity: 0; transition: opacity .3s; max-width: 640px; text-align: center; }
+  #dialogue { position: absolute; top: 132px; left: 50%; transform: translateX(-50%); background: rgba(20,16,8,.82); border-left: 4px solid #ffb020; padding: 10px 18px; border-radius: 6px; font-size: 15px; font-style: italic; opacity: 0; transition: opacity .3s; max-width: 680px; text-align: center; line-height: 1.4; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+  #crosshair::after { top: 10px; left: 0; width: 22px; height: 2px; }
+  #damage { position: fixed; inset: 0; pointer-events: none; z-index: 6; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(200,20,20,.55) 100%); transition: opacity .12s; }
+  /* ---------- Overlays ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(8,10,16,.45); }
+  .card { background: rgba(12,16,24,.92); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 30px 38px; max-width: 640px; width: 92%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .card h1 { font-size: 52px; letter-spacing: 4px; background: linear-gradient(90deg, #ffb020, #ff5e62); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card h2 { font-size: 26px; letter-spacing: 2px; margin-bottom: 10px; }
+  .card .tagline { color: #ffd34d; letter-spacing: 3px; font-size: 14px; margin: 6px 0 16px; }
+  .card p { color: #d5dce4; line-height: 1.55; font-size: 15px; }
+  .card .controls { text-align: left; margin: 18px auto 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px 22px; font-size: 14px; color: #c8d0da; max-width: 520px; }
+  .card .controls b { color: #fff; background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 7px; margin-right: 6px; font-size: 13px; }
+  .btn { display: inline-block; margin-top: 18px; padding: 13px 34px; font-size: 17px; font-weight: 800; letter-spacing: 1px; color: #201400; background: linear-gradient(180deg, #ffc53d, #ff8a3d); border: none; border-radius: 8px; cursor: pointer; }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.secondary { background: rgba(255,255,255,.14); color: #fff; margin-left: 10px; }
+  .btn.small { padding: 9px 20px; font-size: 14px; margin-top: 12px; }
+  .fine { font-size: 12px; color: #8b939e; margin-top: 16px; }
+  #mission-list { text-align: left; margin-top: 14px; }
+  .mission-row { padding: 10px 4px; border-bottom: 1px solid rgba(255,255,255,.1); font-size: 15px; }
+  .mission-row .dim { color: #9aa4b0; font-size: 13px; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="app"></div>
+<canvas id="game-canvas"></canvas>
+<div id="damage"></div>
 
-<div id="hud-top-left" class="hud hidden">
-  <div id="money">$ 250</div>
-  <div id="health-wrap"><div id="health-bar"></div></div>
-  <div id="armor-line">SOLSTICE CITY &nbsp;•&nbsp; <span id="district">Marina District</span></div>
+<div id="hud" class="hidden">
+  <div class="panel" id="money-box">
+    <div id="money">$ 250</div>
+    <div id="health-bar"><div id="health-fill"></div></div>
+    <div id="health-num">100</div>
+    <div id="district">SOLSTICE CITY • Solstice Plaza</div>
+  </div>
+  <div class="panel" id="status-box">
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="clock">14:32 ☀ 28°C</div>
+  </div>
+  <div class="panel" id="mission-box">
+    <div id="mission-title">FREE ROAM</div>
+    <div id="mission-text">Next job: FIRST LIGHT — go to the ◆ marker and press E.</div>
+    <div id="objective-distance"></div>
+  </div>
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="200" height="200"></canvas>
+    <div id="speed">0 km/h</div>
+    <div id="ammo">🔫 30 / 90</div>
+  </div>
+  <div id="hint"></div>
+  <div id="toast"></div>
+  <div id="dialogue"></div>
+  <div id="crosshair"></div>
 </div>
-<div id="hud-top-right" class="hud hidden">
-  <div id="wanted"><span class="off">★★★★★</span></div>
-  <div id="clock">14:32 &nbsp;☀ 28°C</div>
-</div>
-<div id="hud-bottom-left" class="hud hidden">
-  <div id="objective"><span class="m-title">FREE ROAM</span><br><span class="m-sub">Explore Solstice City. Steal a car with <b>E</b>, take a mission from the <b style="color:#ff9f1c">◆</b> marker.</span></div>
-  <div id="dialogue"><span class="who"></span><span class="line"></span></div>
-</div>
-<div id="hud-bottom-right" class="hud hidden">
-  <canvas id="minimap" width="188" height="188"></canvas>
-  <div id="speedo">0 <small>km/h</small></div>
-  <div id="ammo">🔫 30 / 90</div>
-</div>
-<div id="crosshair"></div>
-<div id="toast"></div>
-<div id="hint" class="hidden">W A S D move &nbsp;•&nbsp; drag mouse to look &nbsp;•&nbsp; E enter car &nbsp;•&nbsp; click to shoot</div>
 
-<div id="menu" class="overlay">
-  <div class="panel">
+<div class="overlay" id="overlay-menu">
+  <div class="card">
     <h1>SOLSTICE CITY</h1>
-    <h2>AN OPEN-WORLD CRIME STORY &nbsp;•&nbsp; SUN · SEA · STREETS</h2>
-    <p>You are <b style="color:#fff">Mara Voss</b>, a courier with a fast car and faster debts, new to the
-    sun-soaked coast of Solstice City. The marina sparkles, the palms sway — and every street
-    belongs to somebody. Take jobs, steal cars, dodge the Solstice PD, and make enough to buy
-    your way out.</p>
-    <div>
-      <button class="btn" id="btn-start">▶ &nbsp;NEW GAME</button>
-      <button class="btn ghost hidden" id="btn-continue">CONTINUE</button>
-    </div>
+    <div class="tagline">AN OPEN-WORLD CRIME STORY &nbsp;•&nbsp; SUN · SEA · STREETS</div>
+    <p>You are <b>Mara Voss</b>, a courier with a fast car and faster debts, new to the sun-soaked coast of Solstice City. The marina sparkles, the palms sway — and every street belongs to somebody. Take jobs, steal cars, dodge the Solstice PD, and make enough to buy your way out.</p>
+    <div><button class="btn" id="btn-new">▶ &nbsp;NEW GAME</button><button class="btn secondary hidden" id="btn-continue">CONTINUE</button></div>
     <div class="controls">
-      <div><b>W A S D</b> move / drive &nbsp; <b>Shift</b> sprint</div>
-      <div><b>Mouse drag</b> look &nbsp; <b>Wheel</b> zoom</div>
-      <div><b>E</b> enter / exit car &nbsp; <b>Space</b> handbrake / jump</div>
-      <div><b>Click</b> shoot &nbsp; <b>R</b> reload &nbsp; <b>F</b> punch</div>
-      <div><b>M</b> mission list &nbsp; <b>Esc</b> pause</div>
-      <div><b>H</b> toggle help &nbsp; <b>P</b> save game</div>
+      <div><b>W A S D</b> move / drive</div><div><b>Shift</b> sprint</div>
+      <div><b>Mouse drag</b> look</div><div><b>Wheel</b> zoom</div>
+      <div><b>E</b> enter / exit car</div><div><b>Space</b> handbrake / jump</div>
+      <div><b>Click</b> shoot</div><div><b>R</b> reload &nbsp;<b>F</b> punch</div>
+      <div><b>M</b> mission list</div><div><b>Esc</b> pause</div>
+      <div><b>H</b> toggle help</div><div><b>P</b> save game</div>
     </div>
-    <p style="font-size:12px;color:#8fa8c0">A fully original game. No real city, person or brand appears in it.<br>
-    Best played in desktop Chrome, keyboard + mouse, sound on.</p>
+    <p class="fine">A fully original game. No real city, person or brand appears in it.<br>Best played in desktop Chrome, keyboard + mouse, sound on.</p>
   </div>
 </div>
 
-<div id="pause" class="overlay hidden">
-  <div class="panel">
-    <h1 style="font-size:44px">PAUSED</h1>
-    <p>Solstice City waits for no one — except right now.</p>
-    <button class="btn" id="btn-resume">RESUME</button>
-    <button class="btn ghost" id="btn-save">SAVE GAME</button>
-    <button class="btn ghost" id="btn-quit">QUIT TO MENU</button>
+<div class="overlay hidden" id="overlay-pause">
+  <div class="card">
+    <h2>PAUSED</h2>
+    <p>Take a breath, Mara. The city will wait.</p>
+    <div><button class="btn" id="btn-resume">RESUME</button><button class="btn secondary" id="btn-quit">QUIT TO MENU</button></div>
   </div>
 </div>
 
-<div id="wasted" class="overlay">
-  <div class="panel">
-    <h1>BUSTED</h1>
-    <p id="wasted-text">The Solstice PD caught up with you.</p>
-    <button class="btn" id="btn-retry">TRY AGAIN</button>
+<div class="overlay hidden" id="overlay-missions">
+  <div class="card">
+    <h2>MISSIONS</h2>
+    <div id="mission-list"></div>
+    <button class="btn small" id="btn-close-missions">CLOSE (M)</button>
   </div>
 </div>
 
-<div id="loading">LOADING SOLSTICE CITY…</div>
+<div class="overlay hidden" id="overlay-help">
+  <div class="card">
+    <h2>HOW TO PLAY</h2>
+    <p>Walk to the ◆ marker and press E to start a job. Steal any parked car with E. Crime raises your wanted stars — the Solstice PD sends foot cops first, then cruisers. Hide out for a while and the heat cools off. Finish all three jobs to clear your debts.</p>
+    <button class="btn small" id="btn-close-help">CLOSE (H)</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overlay-busted">
+  <div class="card">
+    <h2>BUSTED</h2>
+    <p id="busted-text">The Solstice PD caught up with you.</p>
+    <div><button class="btn" id="btn-busted">BACK TO THE STREETS</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overlay-complete">
+  <div class="card">
+    <h2>JOB DONE</h2>
+    <p id="complete-text"></p>
+  </div>
+</div>
 
 <script type="module" src="./src/main.js"></script>
 </body>

@@ -1,63 +1,96 @@
-// Particles: one pooled THREE.Points cloud for sparks, dust, muzzle and blood.
+// Particles, tracers, smoke and screen shake: cheap pooled meshes,
+// no textures, no allocations per frame beyond a small ring buffer.
 import * as THREE from 'three';
-import { rand } from './util.js';
-
-const MAX = 600;
 
 export class Effects {
   constructor(scene) {
     this.scene = scene;
-    this.parts = [];
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX * 3), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX * 3), 3));
-    this.points = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: 0.55, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false,
-    }));
-    this.points.frustumCulled = false;
-    scene.add(this.points);
+    this.particles = [];
+    this.tracers = [];
+    this.shake = 0;
+    this.particleGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+    this.mats = {};
   }
 
-  spawn(x, y, z, color, n, speed, up, life, gravity) {
-    for (let i = 0; i < n; i++) {
-      if (this.parts.length >= MAX) this.parts.shift();
-      const a = rand(Math.PI * 2);
-      this.parts.push({
-        x, y, z,
-        vx: Math.cos(a) * rand(0.3, 1) * speed,
-        vy: rand(0.2, 1) * up,
-        vz: Math.sin(a) * rand(0.3, 1) * speed,
-        life: rand(life * 0.6, life), maxLife: life,
-        r: color.r, g: color.g, b: color.b, gravity,
+  mat(color) {
+    if (!this.mats[color]) this.mats[color] = new THREE.MeshBasicMaterial({ color });
+    return this.mats[color];
+  }
+
+  burst(pos, color, count, speed = 4) {
+    for (let i = 0; i < count; i++) {
+      const m = new THREE.Mesh(this.particleGeo, this.mat(color));
+      m.position.copy(pos);
+      this.scene.add(m);
+      const a = Math.random() * Math.PI * 2;
+      const up = Math.random() * 3 + 1;
+      this.particles.push({
+        mesh: m,
+        vx: Math.cos(a) * speed * (0.4 + Math.random() * 0.8),
+        vy: up,
+        vz: Math.sin(a) * speed * (0.4 + Math.random() * 0.8),
+        life: 0.5 + Math.random() * 0.4,
+        age: 0,
+      });
+    }
+    if (this.particles.length > 320) {
+      const extra = this.particles.splice(0, this.particles.length - 320);
+      for (const p of extra) this.scene.remove(p.mesh);
+    }
+  }
+
+  smoke(pos, count = 6) {
+    for (let i = 0; i < count; i++) {
+      const m = new THREE.Mesh(this.particleGeo, this.mat(0x9aa0a3));
+      m.scale.setScalar(2.2);
+      m.position.set(pos.x + (Math.random() - 0.5), pos.y + 0.3, pos.z + (Math.random() - 0.5));
+      this.scene.add(m);
+      this.particles.push({
+        mesh: m, vx: (Math.random() - 0.5) * 0.6, vy: 1.2 + Math.random(), vz: (Math.random() - 0.5) * 0.6,
+        life: 0.9 + Math.random() * 0.5, age: 0, grow: true,
       });
     }
   }
 
-  crashSparks(x, y, z) { this.spawn(x, y, z, new THREE.Color(0xffc233), 26, 7, 4, 0.7, 14); }
-  dust(x, y, z) { this.spawn(x, y, z, new THREE.Color(0xcbb89a), 6, 2.5, 1.2, 0.9, 1); }
-  muzzle(x, y, z) { this.spawn(x, y, z, new THREE.Color(0xffe27a), 10, 5, 1, 0.18, 0); }
-  blood(x, y, z) { this.spawn(x, y, z, new THREE.Color(0xc01818), 14, 3, 2, 0.6, 10); }
-  cashBurst(x, y, z) { this.spawn(x, y, z, new THREE.Color(0x7dff9b), 20, 4, 5, 1.0, 8); }
+  tracer(from, to) {
+    const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.95 }));
+    this.scene.add(line);
+    this.tracers.push({ line, age: 0, life: 0.09 });
+  }
 
-  update(dt) {
-    const pos = this.points.geometry.attributes.position.array;
-    const col = this.points.geometry.attributes.color.array;
-    let i = 0;
-    this.parts = this.parts.filter((p) => {
-      p.life -= dt;
-      if (p.life <= 0) return false;
-      p.vy -= p.gravity * dt;
-      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-      if (p.y < 0.05) { p.y = 0.05; p.vy = 0; }
-      const f = p.life / p.maxLife;
-      pos[i * 3] = p.x; pos[i * 3 + 1] = p.y; pos[i * 3 + 2] = p.z;
-      col[i * 3] = p.r * f; col[i * 3 + 1] = p.g * f; col[i * 3 + 2] = p.b * f;
-      i++;
-      return true;
-    });
-    // Hide the rest off-screen.
-    for (; i < MAX; i++) { pos[i * 3 + 1] = -100; }
-    this.points.geometry.attributes.position.needsUpdate = true;
-    this.points.geometry.attributes.color.needsUpdate = true;
+  addShake(amount) { this.shake = Math.min(0.6, this.shake + amount); }
+
+  update(dt, camera) {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.age += dt;
+      if (p.age >= p.life) {
+        this.scene.remove(p.mesh);
+        this.particles.splice(i, 1);
+        continue;
+      }
+      p.vy -= 9 * dt;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y = Math.max(0.08, p.mesh.position.y + p.vy * dt);
+      p.mesh.position.z += p.vz * dt;
+      if (p.grow) p.mesh.scale.multiplyScalar(1 + dt * 1.4);
+      p.mesh.rotation.x += dt * 3;
+      p.mesh.rotation.y += dt * 2;
+    }
+    for (let i = this.tracers.length - 1; i >= 0; i--) {
+      const t = this.tracers[i];
+      t.age += dt;
+      if (t.age >= t.life) {
+        this.scene.remove(t.line);
+        t.line.geometry.dispose();
+        this.tracers.splice(i, 1);
+      }
+    }
+    if (this.shake > 0.001 && camera) {
+      camera.position.x += (Math.random() - 0.5) * this.shake * 0.35;
+      camera.position.y += (Math.random() - 0.5) * this.shake * 0.35;
+      this.shake *= Math.exp(-6 * dt);
+    }
   }
 }

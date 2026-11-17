@@ -1,71 +1,61 @@
-// Keyboard + mouse input: WASD, sprint, jump/handbrake, drag-look, wheel zoom,
-// click to shoot, E to enter cars / talk, R reload, F punch, M missions, P save.
+// Keyboard + mouse state with edge detection (pressed-this-frame) for actions.
 export class Input {
-  constructor(game) {
-    this.game = game;
-    this.forward = false; this.back = false; this.left = false; this.right = false;
-    this.sprint = false; this.jump = false; this.handbrake = false;
+  constructor(canvas) {
+    this.keys = new Set();
+    this.pressed = new Set();
+    this.mouseDX = 0;
+    this.mouseDY = 0;
+    this.wheelDelta = 0;
     this.mouseDown = false;
+    this.clicked = false;
     this.dragging = false;
-    this.lastX = 0; this.lastY = 0;
-    this.onShoot = null; this.onInteract = null; this.onPunch = null;
-    this.onReload = null; this.onPause = null; this.onSave = null; this.onHelp = null;
-    this.attach();
+    this.canvas = canvas;
+    this._onKeyDown = (e) => {
+      if (e.repeat) return;
+      this.keys.add(e.code);
+      this.pressed.add(e.code);
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
+    };
+    this._onKeyUp = (e) => this.keys.delete(e.code);
+    this._onMouseMove = (e) => {
+      if (!this.dragging) return;
+      this.mouseDX += e.movementX || 0;
+      this.mouseDY += e.movementY || 0;
+    };
+    this._onMouseDown = (e) => {
+      this.dragging = true;
+      this.mouseDown = true;
+      this.clicked = true;
+    };
+    this._onMouseUp = () => { this.dragging = false; this.mouseDown = false; };
+    this._onWheel = (e) => { this.wheelDelta += e.deltaY; e.preventDefault(); };
+    this._onBlur = () => { this.keys.clear(); this.dragging = false; this.mouseDown = false; };
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mouseup', this._onMouseUp);
+    window.addEventListener('blur', this._onBlur);
+    canvas.addEventListener('mousedown', this._onMouseDown);
+    canvas.addEventListener('wheel', this._onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  attach() {
-    const key = (e) => {
-      const k = e.code;
-      if (k === 'KeyW' || k === 'ArrowUp') this.forward = true;
-      if (k === 'KeyS' || k === 'ArrowDown') this.back = true;
-      if (k === 'KeyA' || k === 'ArrowLeft') this.left = true;
-      if (k === 'KeyD' || k === 'ArrowRight') this.right = true;
-      if (k === 'ShiftLeft' || k === 'ShiftRight') this.sprint = true;
-      if (k === 'Space') { this.jump = true; this.handbrake = true; e.preventDefault(); }
-    };
-    const keyup = (e) => {
-      const k = e.code;
-      if (k === 'KeyW' || k === 'ArrowUp') this.forward = false;
-      if (k === 'KeyS' || k === 'ArrowDown') this.back = false;
-      if (k === 'KeyA' || k === 'ArrowLeft') this.left = false;
-      if (k === 'KeyD' || k === 'ArrowRight') this.right = false;
-      if (k === 'ShiftLeft' || k === 'ShiftRight') this.sprint = false;
-      if (k === 'Space') { this.jump = false; this.handbrake = false; }
-    };
-    const keydown = (e) => {
-      const k = e.code;
-      if (k === 'KeyE' && this.onInteract) this.onInteract();
-      if (k === 'KeyR' && this.onReload) this.onReload();
-      if (k === 'KeyF' && this.onPunch) this.onPunch();
-      if (k === 'KeyM') this.game.hud.toast('MISSIONS', this.game.missionListText());
-      if (k === 'KeyP' && this.onSave) this.onSave();
-      if (k === 'KeyH' && this.onHelp) this.onHelp();
-      if (k === 'Escape' && this.onPause) this.onPause();
-    };
-    window.addEventListener('keydown', key);
-    window.addEventListener('keyup', keyup);
-    window.addEventListener('keydown', keydown);
-    const canvas = this.game.renderer.domElement;
-    canvas.addEventListener('mousedown', (e) => {
-      this.mouseDown = true; this.dragging = true; this.lastX = e.clientX; this.lastY = e.clientY;
-    });
-    window.addEventListener('mouseup', (e) => {
-      if (this.mouseDown && !this.dragging) { /* click without drag handled below */ }
-      if (this.mouseDown && Math.abs(e.clientX - this.lastX) < 5 && Math.abs(e.clientY - this.lastY) < 5) {
-        if (this.onShoot && this.game.state === 'playing') this.onShoot();
-      }
-      this.mouseDown = false; this.dragging = false;
-    });
-    window.addEventListener('mousemove', (e) => {
-      if (!this.dragging) return;
-      const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
-      this.lastX = e.clientX; this.lastY = e.clientY;
-      this.game.cameraYaw -= dx * 0.005;
-      this.game.cameraPitch = Math.max(-0.15, Math.min(0.9, this.game.cameraPitch + dy * 0.004));
-    });
-    canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      this.game.cameraDist = Math.max(5, Math.min(16, this.game.cameraDist + Math.sign(e.deltaY) * 1.2));
-    }, { passive: false });
+  down(code) { return this.keys.has(code); }
+  wasPressed(code) { return this.pressed.has(code); }
+  // WASD / arrows as a -1..1 pair, in camera space.
+  moveAxes() {
+    const f = (this.down('KeyW') || this.down('ArrowUp') ? 1 : 0) - (this.down('KeyS') || this.down('ArrowDown') ? 1 : 0);
+    const r = (this.down('KeyD') || this.down('ArrowRight') ? 1 : 0) - (this.down('KeyA') || this.down('ArrowLeft') ? 1 : 0);
+    return { f, r };
+  }
+  sprint() { return this.down('ShiftLeft') || this.down('ShiftRight'); }
+
+  // Call once per frame after the game has read the state.
+  endFrame() {
+    this.pressed.clear();
+    this.mouseDX = 0;
+    this.mouseDY = 0;
+    this.wheelDelta = 0;
+    this.clicked = false;
   }
 }

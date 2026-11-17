@@ -1,64 +1,65 @@
-// Shared helpers for Solstice City: math, random, procedural canvas textures.
-export function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
-export function lerp(a, b, t) { return a + (b - a) * t; }
-export function rand(a = 1, b) { return b === undefined ? Math.random() * a : a + Math.random() * (b - a); }
-export function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
-export function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-export function dist2(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return dx * dx + dz * dz; }
+// Small math + random helpers shared by every system. No imports.
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const damp = (a, b, lambda, dt) => lerp(a, b, 1 - Math.exp(-lambda * dt));
+
 export function angleLerp(a, b, t) {
   let d = (b - a) % (Math.PI * 2);
   if (d > Math.PI) d -= Math.PI * 2;
   if (d < -Math.PI) d += Math.PI * 2;
   return a + d * t;
 }
-// Deterministic hash-based pseudo random for city layout (same city every load).
-export function hashRand(x, z, salt = 0) {
-  let h = (x * 374761393 + z * 668265263 + salt * 974634211) | 0;
-  h = (h ^ (h >> 13)) | 0; h = Math.imul(h, 1274126177); h = (h ^ (h >> 16)) >>> 0;
-  return h / 4294967295;
+
+export function angleDiff(a, b) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
 }
-export function makeCanvas(w, h) {
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  return c;
+
+export function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+export function rand(rng, lo, hi) { return lo + rng() * (hi - lo); }
+export function randInt(rng, lo, hi) { return Math.floor(rand(rng, lo, hi + 1)); }
+export function chance(rng, p) { return rng() < p; }
+
+// 2D distance on the ground plane.
+export function dist2(ax, az, bx, bz) {
+  const dx = ax - bx, dz = az - bz;
+  return Math.sqrt(dx * dx + dz * dz);
 }
-// Facade texture: lit windows on a coloured wall, drawn once per palette.
-export function facadeTexture(base, litRatio = 0.42) {
-  const c = makeCanvas(128, 256);
-  const g = c.getContext('2d');
-  g.fillStyle = base; g.fillRect(0, 0, 128, 256);
-  g.fillStyle = 'rgba(0,0,0,0.18)';
-  for (let y = 0; y < 256; y += 16) g.fillRect(0, y, 128, 2);
-  const cols = 6, rows = 14;
-  for (let r = 0; r < rows; r++) {
-    for (let col = 0; col < cols; col++) {
-      const lit = Math.random() < litRatio;
-      g.fillStyle = lit ? pick(['#ffd98a', '#ffe9b0', '#9fd8ff', '#fff3c4']) : 'rgba(10,16,28,0.85)';
-      g.fillRect(8 + col * 20, 10 + r * 17, 12, 11);
-    }
+
+// Push a circle (x,z,r) out of an axis-aligned box. Returns true if it hit.
+export function collideCircleBox(x, z, r, box) {
+  const cx = clamp(x, box.minX, box.maxX);
+  const cz = clamp(z, box.minZ, box.maxZ);
+  const dx = x - cx, dz = z - cz;
+  const d2 = dx * dx + dz * dz;
+  if (d2 >= r * r) return null;
+  if (d2 > 0.0001) {
+    const d = Math.sqrt(d2);
+    return { x: cx + (dx / d) * r, z: cz + (dz / d) * r, nx: dx / d, nz: dz / d };
   }
-  return c;
+  // Center inside the box: push out along the smallest penetration axis.
+  const pl = x - box.minX, pr = box.maxX - x, pt = z - box.minZ, pb = box.maxZ - z;
+  const m = Math.min(pl, pr, pt, pb);
+  if (m === pl) return { x: box.minX - r, z, nx: -1, nz: 0 };
+  if (m === pr) return { x: box.maxX + r, z, nx: 1, nz: 0 };
+  if (m === pt) return { x, z: box.minZ - r, nx: 0, nz: -1 };
+  return { x, z: box.maxZ + r, nx: 0, nz: 1 };
 }
-// Asphalt with a dashed centre line, tiled along roads.
-export function roadTexture() {
-  const c = makeCanvas(128, 128);
-  const g = c.getContext('2d');
-  g.fillStyle = '#2e3138'; g.fillRect(0, 0, 128, 128);
-  g.fillStyle = 'rgba(255,255,255,0.05)';
-  for (let i = 0; i < 200; i++) g.fillRect(Math.random() * 128, Math.random() * 128, 2, 2);
-  g.fillStyle = '#e8c33c';
-  g.fillRect(62, 8, 4, 44); g.fillRect(62, 76, 4, 44);
-  g.fillStyle = 'rgba(255,255,255,0.75)';
-  g.fillRect(4, 0, 3, 128); g.fillRect(121, 0, 3, 128);
-  return c;
-}
-export function sidewalkTexture() {
-  const c = makeCanvas(128, 128);
-  const g = c.getContext('2d');
-  g.fillStyle = '#9a938a'; g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 2;
-  for (let i = 0; i <= 128; i += 32) {
-    g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 128); g.stroke();
-    g.beginPath(); g.moveTo(0, i); g.lineTo(128, i); g.stroke();
-  }
-  return c;
+
+// Format seconds as mm:ss.
+export function fmtTime(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
 }
